@@ -48,6 +48,8 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
         )
         
         Text(text = "Text has been updated please update this to github")
+
+        Text(text = "Added to commit changes in github")
     }
 
 
