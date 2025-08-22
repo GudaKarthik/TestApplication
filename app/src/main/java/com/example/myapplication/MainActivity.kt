@@ -46,6 +46,8 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
             text = "Connect Project to github",
             modifier = modifier
         )
+        
+        Text(text = "Text has been updated please update this to github")
     }
 
 
