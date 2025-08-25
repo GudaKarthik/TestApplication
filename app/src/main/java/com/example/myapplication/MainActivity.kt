@@ -69,7 +69,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
                 Text(text = "Click here to make payment")
             }
         }else{
-            PaymentWebView(url = "http://test-consumer.meghagas.in/consumerRecharge/hesRecharge", crn = "1110100001", amount = "200")
+            PaymentWebView()
         }
     }
 
@@ -85,8 +85,8 @@ fun GreetingPreview() {
 }
 
 @Composable
-fun PaymentWebView(url : String, crn : String, amount : String){
-    
+fun PaymentWebView(){
+
     Column {
         Text(text = "Now you can make your payments in app itself")
     }
