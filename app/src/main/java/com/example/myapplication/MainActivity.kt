@@ -231,6 +231,7 @@ fun CameraPreview(
                         val cameraProvider = cameraProviderFuture.get()
                         val preview = androidx.camera.core.Preview.Builder().build().also {
                             it.setSurfaceProvider(previewView.surfaceProvider)
+
                         }
 
                         // Unbind before rebinding
@@ -290,7 +291,7 @@ fun captureImage(context: Context, imageCapture: ImageCapture, onPhotoCaptured: 
         ContextCompat.getMainExecutor(context),
         object : ImageCapture.OnImageSavedCallback{
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                Toast.makeText(context,"Capturing..",Toast.LENGTH_SHORT).show()
+                Toast.makeText(context,"Loading..",Toast.LENGTH_SHORT).show()
                 val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
                 onPhotoCaptured(bitmap)
             }
@@ -321,7 +322,24 @@ private fun detectText(bitmap: Bitmap, onResult : (String) -> Unit){
                 val stopWords = listOf("GOVERNMENT", "INDIA", "AADHAAR", "DOB", "DATE",
                     "YEAR", "MALE", "FEMALE", "GENDER", "ADDRESS", "UNIQUE", "IDENTIFICATION")
 
-               val nameCandidates = visionText.textBlocks
+
+                val allLines = visionText.textBlocks.flatMap { it.lines }.map { it.text }
+
+                val dobIndex = allLines.indexOfFirst { it.uppercase().contains("DOB") || it.uppercase().contains("YEAR") }
+
+                if (dobIndex > 0) {
+                    for (i in dobIndex - 1 downTo maxOf(0, dobIndex - 3)) {
+                        val candidate = allLines[i].trim()
+                        val up = candidate.uppercase()
+                        if (candidate.isNotBlank() && candidate.length >= 3 &&
+                            !up.any { it.isDigit() } &&
+                            stopWords.none { up.contains(it) }) {
+                            Log.d("AADHAR","Name Text is $candidate")
+                        }
+                    }
+                }
+
+                val nameCandidates = visionText.textBlocks
                    .flatMap { it.lines }
                    .map { it.text.trim() }
                    .filter { isNameLike(it, stopWords) }
