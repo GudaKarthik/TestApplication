@@ -9,9 +9,11 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.border
@@ -95,6 +97,10 @@ fun AadhaarScreen() {
         mutableStateOf<String?>(null)
     }
 
+    var ocrname by remember {
+        mutableStateOf<String?>(null)
+    }
+
     var showAlertDialog by remember {
         mutableStateOf<Boolean>(false)
     }
@@ -113,17 +119,18 @@ fun AadhaarScreen() {
                     .align(Alignment.Center),
                 onPhotoCaptured = { bitmap ->
                     capturedImage = bitmap
-                    detectText(bitmap) { text ->
+                    detectText(bitmap) { text, name ->
                         ocrResult = text
+                        ocrname = name
                         showAlertDialog = true
                     }
                 }
             )
 
         if (showAlertDialog){
-            ShowAlertDialog(ocrResult, onDismiss = {
+            ShowAlertDialog(ocrResult,ocrname) {
                 showAlertDialog = false
-            })
+            }
         }
 //        } else {
 //            Column(
@@ -155,7 +162,7 @@ fun AadhaarScreen() {
 }
 
 @Composable
-fun ShowAlertDialog(ocrResult: String?, onDismiss : () -> Unit) {
+fun ShowAlertDialog(ocrResult: String?, ocrname: String?, onDismiss: () -> Unit) {
 
     var showDialog by remember {
         mutableStateOf(false)
@@ -184,7 +191,7 @@ fun ShowAlertDialog(ocrResult: String?, onDismiss : () -> Unit) {
         },
 
         text = {
-            Text(text = "This is the content of the alert dialog.", color = Color.DarkGray)
+            Text(text = "This is the content of the alert dialog. $ocrname", color = Color.DarkGray)
         },
         // set padding for contents inside the box
         modifier = Modifier.padding(16.dp),
@@ -221,6 +228,7 @@ fun CameraPreview(
             modifier = modifier.fillMaxSize(),
 
             factory = { ctx ->
+
                 val previewView = PreviewView(ctx).apply {
                     scaleType = PreviewView.ScaleType.FILL_CENTER
                 }
@@ -231,7 +239,6 @@ fun CameraPreview(
                         val cameraProvider = cameraProviderFuture.get()
                         val preview = androidx.camera.core.Preview.Builder().build().also {
                             it.setSurfaceProvider(previewView.surfaceProvider)
-
                         }
 
                         // Unbind before rebinding
@@ -290,6 +297,7 @@ fun captureImage(context: Context, imageCapture: ImageCapture, onPhotoCaptured: 
         outputoptions,
         ContextCompat.getMainExecutor(context),
         object : ImageCapture.OnImageSavedCallback{
+
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
                 Toast.makeText(context,"Loading..",Toast.LENGTH_SHORT).show()
                 val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
@@ -305,7 +313,27 @@ fun captureImage(context: Context, imageCapture: ImageCapture, onPhotoCaptured: 
     )
 }
 
-private fun detectText(bitmap: Bitmap, onResult : (String) -> Unit){
+fun takePicture(context: Context, imageCapture: ImageCapture, onPhotoCaptured: (Bitmap) -> Unit){
+    imageCapture.takePicture(
+        ContextCompat.getMainExecutor(context),
+        object : ImageCapture.OnImageCapturedCallback(){
+            override fun onCaptureSuccess(image: ImageProxy) {
+                val bitmap = imageProxyToBitmap(image)
+                onPhotoCaptured(bitmap)
+            }
+        }
+    )
+}
+
+private fun imageProxyToBitmap(image: ImageProxy): Bitmap {
+    val planeProxy = image.planes[0]
+    val buffer = planeProxy.buffer
+    val bytes = ByteArray(buffer.remaining())
+    buffer.get(bytes)
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+}
+
+private fun detectText(bitmap: Bitmap, onResult : (String, String) -> Unit){
     val image = InputImage.fromBitmap(bitmap,0)
     val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
@@ -317,10 +345,11 @@ private fun detectText(bitmap: Bitmap, onResult : (String) -> Unit){
 
                 var aadhar = regex.find(visionText.text)
 
-                onResult(aadhar!!.value.toString() ?: "No aadhar has been found")
+                //onResult(aadhar!!.value.toString() ?: "No aadhar has been found")
 
                 val stopWords = listOf("GOVERNMENT", "INDIA", "AADHAAR", "DOB", "DATE",
-                    "YEAR", "MALE", "FEMALE", "GENDER", "ADDRESS", "UNIQUE", "IDENTIFICATION")
+                    "YEAR", "MALE", "FEMALE", "GENDER", "ADDRESS", "UNIQUE", "IDENTIFICATION","GOVERNMENT OF INDIA",
+                    "YEAR OF BIRTH","Year of Birth")
 
 
                 val allLines = visionText.textBlocks.flatMap { it.lines }.map { it.text }
@@ -346,6 +375,12 @@ private fun detectText(bitmap: Bitmap, onResult : (String) -> Unit){
 
                 Log.d("AADHAR","AAdhar name is ${nameCandidates.toString()}")
 
+                val totalLines = visionText.textBlocks.flatMap { it.lines }
+                    .map { it.text }
+                extractName(totalLines)
+
+                onResult(aadhar!!.value.toString() ?: "No aadhar has been found", extractName(totalLines) ?: "Name has not found")
+
             }catch (e : Exception){
                 e.printStackTrace()
                 Log.d("AADHAR","Exception ${e.printStackTrace()}")
@@ -361,9 +396,47 @@ private fun detectText(bitmap: Bitmap, onResult : (String) -> Unit){
 
         .addOnFailureListener {
             it.printStackTrace()
-            onResult(it.message.toString())
+            onResult(it.message.toString(),"")
             Log.d("AADHAR","The error is ${it.printStackTrace()}")
         }
+}
+
+private fun extractName(allLines : List<String>) : String? {
+    val stopWords = listOf(
+        "GOVERNMENT", "INDIA", "AADHAAR", "DOB", "DATE", "YEAR", "MALE",
+        "FEMALE", "GENDER", "ADDRESS", "UNIQUE", "IDENTIFICATION",
+        "ENROLLMENT", "EID", "NUMBER", "TO", "YOUR", "GOVERNMENT OF INDIA","INFORMATION",
+        "Aadhaar", "is", "a proof of identity", "not of", "citizenship","Aadhaar is valid throughout the country",
+        "Aadhaar will be helpful in availing Government and Non-Government services in future .","Address:",
+        "District","State", "PIN", "Mobile:", "VTC:", "YOUR AADHAR NUMBER", "VID","INFORMATION"
+    )
+
+    val relationwords = listOf("S/O, D/O, W/O", "C/O")
+
+    val dobIndex = allLines.indexOfFirst {
+        val up = it.uppercase()
+        up.contains("DOB") || up.contains("YEAR")
+    }
+
+    if (dobIndex > 0){
+        for (i in dobIndex - 1 downTo maxOf(0,dobIndex - 3)){
+            val candidate = allLines[i].trim()
+            val up = candidate.uppercase()
+
+            if (candidate.isBlank()) continue
+            if (candidate.length < 3) continue
+            if (up.any{
+                it.isDigit()
+                }) continue
+            if (stopWords.any { up.contains(it) }) continue
+
+            if (relationwords.any { up.contains(it) }) continue
+            Log.d("AADHAR","Fetching name $candidate")
+            return candidate
+        }
+    }
+
+    return null
 
 }
 
